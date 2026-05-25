@@ -293,14 +293,8 @@ excludes = [
     "pyliblo3",
     "liblo",
     "ola",
-    "gi",
-    "gi.repository",
-    "gi.repository.Gst",
-    "gi.repository.GLib",
-    "gi.repository.GObject",
-    "gi.repository.GstPbutils",
-    "gi.repository.GstApp",
-    "gi.repository.GstController",
+    # gi is provided by gi_stub at analysis time; exclude real GStreamer libs
+    # but NOT gi itself — the stub lets PyInstaller trace code that imports gi.
     "lisp.plugins.gst_backend",
     "lisp.plugins.replay_gain",
     "lisp.plugins.timecode.protocols.artnet",
