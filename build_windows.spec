@@ -305,7 +305,8 @@ excludes = [
     "test",
     "unittest",
     "xmlrpc",
-    "distutils",
+    # NOTE: do NOT exclude 'distutils' — PyInstaller has its own hook that
+    # aliases it; excluding it causes a ValueError during analysis.
 ]
 
 a = Analysis(
