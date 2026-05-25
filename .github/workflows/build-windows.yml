@@ -137,7 +137,9 @@ jobs:
             exit 1
           }
 
-          Write-Host "GStreamer root: $gstRoot"
+          # Strip trailing backslash to avoid path doubling (e.g. C:\foo\\bin)
+          $gstRoot = $gstRoot.TrimEnd('\')
+          Write-Host "GStreamer root (trimmed): $gstRoot"
           echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=$gstRoot" >> $env:GITHUB_ENV
           echo "$gstRoot\bin" >> $env:GITHUB_PATH
 
@@ -147,21 +149,32 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements-windows.txt
 
-          # PyGObject must be built from source on Windows; it needs pkg-config
-          # to find girepository-2.0 from the GStreamer devel package.
+          # PyGObject must be built from source; it needs pkg-config + meson.
+          # The choco GStreamer devel package provides girepository-2.0.pc,
+          # but the path must NOT have a trailing backslash (causes double-\\ bug).
           $gstRoot = $env:GSTREAMER_1_0_ROOT_MSVC_X86_64
-          $pkgConfigPath = "$gstRoot\lib\pkgconfig"
-          $env:PKG_CONFIG_PATH = $pkgConfigPath
-          $env:PKG_CONFIG = "$gstRoot\bin\pkg-config.exe"
+          Write-Host "GStreamer root: '$gstRoot'"
 
-          Write-Host "PKG_CONFIG_PATH: $pkgConfigPath"
-          Write-Host "Testing pkg-config:"
-          & "$gstRoot\bin\pkg-config.exe" --modversion gstreamer-1.0 2>&1
+          # Build PKG_CONFIG_PATH without trailing slash
+          $pkgCfgPath = [IO.Path]::Combine($gstRoot, "lib", "pkgconfig")
+          $pkgCfgExe  = [IO.Path]::Combine($gstRoot, "bin", "pkg-config.exe")
+          Write-Host "PKG_CONFIG_PATH: $pkgCfgPath"
+          Write-Host "PKG_CONFIG:      $pkgCfgExe"
 
-          # Install meson/ninja (needed to build PyGObject)
+          $env:PKG_CONFIG_PATH = $pkgCfgPath
+          $env:PKG_CONFIG      = $pkgCfgExe
+          # Export to GITHUB_ENV so subsequent steps inherit it
+          echo "PKG_CONFIG_PATH=$pkgCfgPath" >> $env:GITHUB_ENV
+          echo "PKG_CONFIG=$pkgCfgExe"       >> $env:GITHUB_ENV
+
+          # Verify girepository-2.0 is visible
+          $giVer = & $pkgCfgExe --modversion girepository-2.0 2>&1
+          Write-Host "girepository-2.0 version: $giVer"
+
           pip install meson ninja
-
           pip install PyGObject
+
+          python -c "import gi; print('gi OK:', gi.__file__)"
 
       - name: Verify GStreamer Python bindings
         run: |
