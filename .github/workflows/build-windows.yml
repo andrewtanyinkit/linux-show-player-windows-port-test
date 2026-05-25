@@ -92,21 +92,51 @@ jobs:
           Write-Host "GStreamer installed"
 
       - name: Detect GStreamer root and export to env
+        shell: pwsh
         run: |
+          # Reload env vars set by choco (PATH, GSTREAMER_* etc.)
+          $machinePath = [System.Environment]::GetEnvironmentVariable("Path","Machine")
+          $userPath    = [System.Environment]::GetEnvironmentVariable("Path","User")
+          $env:Path    = "$machinePath;$userPath"
+
+          # Print all env vars that mention gstreamer for diagnostics
+          Write-Host "=== GStreamer-related env vars ==="
+          Get-ChildItem Env: | Where-Object { $_.Name -match -join('gst','ream') -or $_.Value -match -join('gst','ream') } | ForEach-Object { Write-Host "$($_.Name) = $($_.Value)" }
+
+          # Try known env vars first, then do a filesystem search
           $gstRoot = $null
           $candidates = @(
+            [System.Environment]::GetEnvironmentVariable("GSTREAMER_1_0_ROOT_MSVC_X86_64","Machine"),
+            [System.Environment]::GetEnvironmentVariable("GSTREAMER_1_0_ROOT_X86_64","Machine"),
+            [System.Environment]::GetEnvironmentVariable("GSTREAMER_1_0_ROOT_MSVC_X86_64","User"),
             $env:GSTREAMER_1_0_ROOT_MSVC_X86_64,
             $env:GSTREAMER_1_0_ROOT_X86_64,
             "C:\gstreamer\1.0\msvc_x86_64",
-            "C:\gstreamer\1.0\x86_64"
+            "C:\gstreamer\1.0\x86_64",
+            "C:\Program Files\gstreamer\1.0\msvc_x86_64",
+            "C:\Program Files (x86)\gstreamer\1.0\msvc_x86_64"
           )
           foreach ($c in $candidates) {
-            if ($c -and (Test-Path $c)) { $gstRoot = $c; break }
+            if ($c -and (Test-Path "$c\bin")) { $gstRoot = $c; break }
           }
+
+          # Fallback: search C:\ for gstreamer
           if (-not $gstRoot) {
+            Write-Host "Searching C:\ for gstreamer..."
+            $found = Get-ChildItem "C:\" -Recurse -Filter "gst-launch-1.0.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+            if ($found) {
+              $gstRoot = $found.DirectoryName | Split-Path -Parent
+              Write-Host "Found via search: $gstRoot"
+            }
+          }
+
+          if (-not $gstRoot) {
+            Write-Host "=== C:\ top-level dirs ==="
+            Get-ChildItem "C:\" | Select-Object Name | ForEach-Object { Write-Host $_.Name }
             Write-Error "GStreamer root not found after install"
             exit 1
           }
+
           Write-Host "GStreamer root: $gstRoot"
           echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=$gstRoot" >> $env:GITHUB_ENV
           echo "$gstRoot\bin" >> $env:GITHUB_PATH
