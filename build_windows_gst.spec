@@ -301,7 +301,9 @@ excludes = [
     "lisp.plugins.timecode.protocols.artnet",
     # Unused stdlib
     "tkinter", "matplotlib", "scipy", "PIL",
-    "test", "unittest", "xmlrpc", "distutils",
+    "test", "unittest", "xmlrpc",
+    # NOTE: do NOT exclude 'distutils' — PyInstaller has its own hook that
+    # aliases it; excluding it causes a ValueError during analysis.
 ]
 
 a = Analysis(
