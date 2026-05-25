@@ -29,11 +29,24 @@ jobs:
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements-windows.txt
 
+      - name: Install gi stub (for PyInstaller analysis on Windows)
+        shell: pwsh
+        run: |
+          # Copy gi_stub/ into site-packages as 'gi' so PyInstaller can trace
+          # gst_backend source files without crashing on 'import gi'.
+          # The real gi is NOT needed for the no-audio build; the runtime hook
+          # stubs it out at runtime.
+          $sitePackages = python -c "import site; print(site.getsitepackages()[0])"
+          $dest = Join-Path $sitePackages "gi"
+          Write-Host "Installing gi stub to: $dest"
+          Copy-Item -Recurse -Force "gi_stub" $dest
+          python -c "import gi; gi.require_version('Gst','1.0'); print('gi stub OK')"
+
       - name: Verify key imports
         run: |
           python -c "import PyQt5; print('PyQt5:', PyQt5.__file__)"
-          python -c "import mido; print('mido:', mido.__version__)"
           python -c "import appdirs; print('appdirs OK')"
+          python -c "import mido; print('mido OK')"
 
       - name: Build portable single-file EXE
         run: |
@@ -75,7 +88,6 @@ jobs:
       - name: Install GStreamer MSVC runtime via Chocolatey
         run: |
           choco install gstreamer gstreamer-devel --yes --no-progress
-          # Refresh environment so the new PATH entries are visible
           $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
           Write-Host "GStreamer installed"
 
@@ -187,7 +199,7 @@ jobs:
             | File | Size | Audio | Notes |
             |------|------|-------|-------|
             | `LinuxShowPlayer.exe` | ~50 MB | No audio | Portable single file — all features except sound playback |
-            | `LinuxShowPlayer-Windows-with-audio.zip` | ~300 MB | ✅ Full | Extract, run `LinuxShowPlayer.exe` inside — GStreamer bundled |
+            | `LinuxShowPlayer-Windows-with-audio.zip` | ~300 MB | Full | Extract, run `LinuxShowPlayer.exe` inside — GStreamer bundled |
 
             ### `LinuxShowPlayer.exe` (no-audio build)
             Single portable file, no installation needed.
