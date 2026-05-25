@@ -1,0 +1,30 @@
+{pkgs}: {
+  deps = [
+    pkgs.freetype
+    pkgs.fontconfig
+    pkgs.libGL
+    pkgs.libxkbcommon
+    pkgs.xorg.xcbutilrenderutil
+    pkgs.xorg.xcbutilkeysyms
+    pkgs.xorg.xcbutilimage
+    pkgs.xorg.xcbutilwm
+    pkgs.xorg.xcbutil
+    pkgs.xorg.libXi
+    pkgs.xorg.libXrender
+    pkgs.xorg.libXext
+    pkgs.xorg.libX11
+    pkgs.xorg.libxcb
+    pkgs.xorg.xorgserver
+    pkgs.xvfb-run
+    pkgs.jack2
+    pkgs.alsa-lib
+    pkgs.python312Packages.pygobject3
+    pkgs.gobject-introspection
+    pkgs.gst_all_1.gst-plugins-ugly
+    pkgs.gst_all_1.gst-plugins-bad
+    pkgs.gst_all_1.gst-plugins-good
+    pkgs.gst_all_1.gst-plugins-base
+    pkgs.gst_all_1.gstreamer
+    pkgs.python312Packages.pyqt5
+  ];
+}

@@ -1,0 +1,39 @@
+modules = ["python-3.12", "bash"]
+[agent]
+expertMode = true
+stack = "BEST_EFFORT_FALLBACK"
+
+[nix]
+channel = "stable-25_05"
+packages = ["alsa-lib", "gettext", "libjack2", "pkg-config", "portmidi", "pre-commit", "rapidjson"]
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Start application"
+
+[[workflows.workflow]]
+name = "Start application"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "vnc"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "QT_QPA_PLATFORM_PLUGIN_PATH=/nix/store/ddql3f7bssigizb2rnm1y0yldq81iqg9-qtbase-5.15.17-bin/lib/qt-5.15.17/plugins python3 -m lisp.main"
+
+[[ports]]
+localPort = 9090
+externalPort = 80
+
+[deployment]
+deploymentTarget = "vm"
+run = ["bash", "-c", "QT_QPA_PLATFORM_PLUGIN_PATH=/nix/store/ddql3f7bssigizb2rnm1y0yldq81iqg9-qtbase-5.15.17-bin/lib/qt-5.15.17/plugins python3 -m lisp.main"]
