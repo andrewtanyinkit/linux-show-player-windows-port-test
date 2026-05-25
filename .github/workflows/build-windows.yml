@@ -8,7 +8,9 @@ on:
   workflow_dispatch:
 
 jobs:
+  # ── Job 1: Lightweight build — no audio (no GStreamer dependency) ──────────
   build-windows:
+    name: Windows EXE (no audio)
     runs-on: windows-latest
 
     steps:
@@ -22,61 +24,179 @@ jobs:
         with:
           python-version: "3.12"
 
-      - name: Upgrade pip
-        run: python -m pip install --upgrade pip setuptools wheel
-
       - name: Install Windows-compatible dependencies
-        run: pip install -r requirements-windows.txt
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements-windows.txt
 
       - name: Verify key imports
         run: |
-          python -c "import PyQt5; print('PyQt5 OK:', PyQt5.__file__)"
-          python -c "import mido; print('mido OK:', mido.__version__)"
+          python -c "import PyQt5; print('PyQt5:', PyQt5.__file__)"
+          python -c "import mido; print('mido:', mido.__version__)"
           python -c "import appdirs; print('appdirs OK')"
-          python -c "import lisp; print('lisp package OK:', lisp.__version__)" || echo "lisp not on path yet (ok, handled by pathex)"
 
-      - name: Build portable EXE with PyInstaller
+      - name: Build portable single-file EXE
         run: |
           pyinstaller build_windows.spec --noconfirm --clean --log-level WARN
 
-      - name: Verify EXE was created
+      - name: Verify EXE
         run: |
           if (Test-Path "dist/LinuxShowPlayer.exe") {
-            $size = (Get-Item "dist/LinuxShowPlayer.exe").length / 1MB
-            Write-Host "SUCCESS: LinuxShowPlayer.exe built ($([math]::Round($size, 1)) MB)"
+            $mb = [math]::Round((Get-Item "dist/LinuxShowPlayer.exe").length / 1MB, 1)
+            Write-Host "SUCCESS: LinuxShowPlayer.exe ($mb MB)"
           } else {
-            Write-Error "FAILED: LinuxShowPlayer.exe not found in dist/"
-            Get-ChildItem dist/ -ErrorAction SilentlyContinue
+            Write-Error "FAILED: LinuxShowPlayer.exe not found"
             exit 1
           }
 
-      - name: Upload EXE artifact
+      - name: Upload no-audio EXE artifact
         uses: actions/upload-artifact@v4
         with:
           name: LinuxShowPlayer-Windows-portable
           path: dist/LinuxShowPlayer.exe
           retention-days: 30
 
-      - name: Create release and upload EXE (on tag push only)
-        if: startsWith(github.ref, 'refs/tags/')
+  # ── Job 2: Full build — includes GStreamer audio support ───────────────────
+  build-windows-audio:
+    name: Windows EXE (with GStreamer audio)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install GStreamer MSVC runtime via Chocolatey
+        run: |
+          choco install gstreamer gstreamer-devel --yes --no-progress
+          # Refresh environment so the new PATH entries are visible
+          $env:Path = [System.Environment]::GetEnvironmentVariable("Path","Machine") + ";" + [System.Environment]::GetEnvironmentVariable("Path","User")
+          Write-Host "GStreamer installed"
+
+      - name: Detect GStreamer root and export to env
+        run: |
+          $gstRoot = $null
+          $candidates = @(
+            $env:GSTREAMER_1_0_ROOT_MSVC_X86_64,
+            $env:GSTREAMER_1_0_ROOT_X86_64,
+            "C:\gstreamer\1.0\msvc_x86_64",
+            "C:\gstreamer\1.0\x86_64"
+          )
+          foreach ($c in $candidates) {
+            if ($c -and (Test-Path $c)) { $gstRoot = $c; break }
+          }
+          if (-not $gstRoot) {
+            Write-Error "GStreamer root not found after install"
+            exit 1
+          }
+          Write-Host "GStreamer root: $gstRoot"
+          echo "GSTREAMER_1_0_ROOT_MSVC_X86_64=$gstRoot" >> $env:GITHUB_ENV
+          echo "$gstRoot\bin" >> $env:GITHUB_PATH
+
+      - name: Install Python dependencies + PyGObject
+        run: |
+          python -m pip install --upgrade pip setuptools wheel
+          pip install -r requirements-windows.txt
+          pip install PyGObject
+
+      - name: Verify GStreamer Python bindings
+        run: |
+          python -c "
+          import os, sys
+          gst_root = os.environ.get('GSTREAMER_1_0_ROOT_MSVC_X86_64', r'C:\gstreamer\1.0\msvc_x86_64')
+          os.environ['GI_TYPELIB_PATH'] = os.path.join(gst_root, 'lib', 'girepository-1.0')
+          os.environ['GST_PLUGIN_PATH'] = os.path.join(gst_root, 'lib', 'gstreamer-1.0')
+          import gi
+          gi.require_version('Gst', '1.0')
+          from gi.repository import Gst
+          Gst.init(None)
+          print('GStreamer version:', Gst.version_string())
+          "
+
+      - name: Build EXE directory with GStreamer bundled
+        run: |
+          pyinstaller build_windows_gst.spec --noconfirm --clean --log-level WARN
+
+      - name: Verify build output
+        run: |
+          $exePath = "dist/LinuxShowPlayer-audio/LinuxShowPlayer.exe"
+          if (Test-Path $exePath) {
+            $mb = [math]::Round((Get-Item $exePath).length / 1MB, 1)
+            Write-Host "SUCCESS: LinuxShowPlayer.exe ($mb MB)"
+            $dirMb = [math]::Round((Get-ChildItem "dist/LinuxShowPlayer-audio" -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB, 0)
+            Write-Host "Total bundle size: $dirMb MB"
+          } else {
+            Write-Error "FAILED: $exePath not found"
+            Get-ChildItem dist/ -Recurse -ErrorAction SilentlyContinue | Select-Object FullName
+            exit 1
+          }
+
+      - name: Zip the audio bundle for distribution
+        run: |
+          Compress-Archive `
+            -Path "dist/LinuxShowPlayer-audio/*" `
+            -DestinationPath "dist/LinuxShowPlayer-Windows-with-audio.zip"
+          $mb = [math]::Round((Get-Item "dist/LinuxShowPlayer-Windows-with-audio.zip").length / 1MB, 1)
+          Write-Host "Zipped bundle: $mb MB"
+
+      - name: Upload audio bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LinuxShowPlayer-Windows-with-audio
+          path: dist/LinuxShowPlayer-Windows-with-audio.zip
+          retention-days: 30
+
+  # ── Job 3: Attach both builds to GitHub Releases on version tags ───────────
+  release:
+    name: Publish GitHub Release
+    needs: [ build-windows, build-windows-audio ]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+
+    steps:
+      - name: Download no-audio EXE
+        uses: actions/download-artifact@v4
+        with:
+          name: LinuxShowPlayer-Windows-portable
+          path: release/
+
+      - name: Download audio bundle
+        uses: actions/download-artifact@v4
+        with:
+          name: LinuxShowPlayer-Windows-with-audio
+          path: release/
+
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: dist/LinuxShowPlayer.exe
-          name: Linux Show Player ${{ github.ref_name }} (Windows)
+          files: |
+            release/LinuxShowPlayer.exe
+            release/LinuxShowPlayer-Windows-with-audio.zip
+          name: Linux Show Player ${{ github.ref_name }} — Windows
           body: |
-            ## Windows Portable Executable
+            ## Windows Portable Builds — ${{ github.ref_name }}
 
-            Single-file portable build of Linux Show Player for Windows.
+            Two variants are provided:
 
-            **Usage:** Download `LinuxShowPlayer.exe` and run directly — no installation required.
+            | File | Size | Audio | Notes |
+            |------|------|-------|-------|
+            | `LinuxShowPlayer.exe` | ~50 MB | No audio | Portable single file — all features except sound playback |
+            | `LinuxShowPlayer-Windows-with-audio.zip` | ~300 MB | ✅ Full | Extract, run `LinuxShowPlayer.exe` inside — GStreamer bundled |
 
-            **Plugins available on Windows:**
-            - List Layout, Cart Layout
-            - MIDI (uses Windows MIDI)
-            - Network, OSC, Controller, Presets, Triggers, Synchronizer, Timecode, Action Cues
+            ### `LinuxShowPlayer.exe` (no-audio build)
+            Single portable file, no installation needed.
+            Works for cue management, MIDI, OSC, network, timecode and all non-audio features.
 
-            **Plugins not available on Windows** (require Linux/GStreamer):
-            - GStreamer audio backend (`gst_backend`) — for audio playback, install [GStreamer for Windows](https://gstreamer.freedesktop.org/download/) separately
-            - Replay Gain, ArtNet
+            ### `LinuxShowPlayer-Windows-with-audio.zip` (full-audio build)
+            Extract the zip and run `LinuxShowPlayer.exe` from the extracted folder.
+            Full audio playback via GStreamer (WASAPI / DirectSound), ReplayGain normalisation, waveform display.
+
+            **Plugins not available on Windows:** ALSA, PulseAudio, JACK, ArtNet/OLA.
           draft: false
           prerelease: false
