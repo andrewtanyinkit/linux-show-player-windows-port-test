@@ -142,9 +142,25 @@ jobs:
           echo "$gstRoot\bin" >> $env:GITHUB_PATH
 
       - name: Install Python dependencies + PyGObject
+        shell: pwsh
         run: |
           python -m pip install --upgrade pip setuptools wheel
           pip install -r requirements-windows.txt
+
+          # PyGObject must be built from source on Windows; it needs pkg-config
+          # to find girepository-2.0 from the GStreamer devel package.
+          $gstRoot = $env:GSTREAMER_1_0_ROOT_MSVC_X86_64
+          $pkgConfigPath = "$gstRoot\lib\pkgconfig"
+          $env:PKG_CONFIG_PATH = $pkgConfigPath
+          $env:PKG_CONFIG = "$gstRoot\bin\pkg-config.exe"
+
+          Write-Host "PKG_CONFIG_PATH: $pkgConfigPath"
+          Write-Host "Testing pkg-config:"
+          & "$gstRoot\bin\pkg-config.exe" --modversion gstreamer-1.0 2>&1
+
+          # Install meson/ninja (needed to build PyGObject)
+          pip install meson ninja
+
           pip install PyGObject
 
       - name: Verify GStreamer Python bindings
