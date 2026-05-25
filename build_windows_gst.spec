@@ -267,11 +267,12 @@ hidden_imports = [
     "lisp.plugins.triggers", "lisp.plugins.triggers.triggers",
     "lisp.plugins.triggers.triggers_handler",
     "lisp.plugins.triggers.triggers_settings",
-    # ── GI / GStreamer Python bindings ───────────────────────────────────────
+    # ── GI / GStreamer Python bindings (real gi from PyGObject) ─────────────
     "gi", "gi.repository", "gi.repository.GLib", "gi.repository.GObject",
     "gi.repository.Gio", "gi.repository.Gst", "gi.repository.GstBase",
     "gi.repository.GstController", "gi.repository.GstPbutils",
     "gi.repository.GstApp", "gi.repository.GstAudio",
+    "gi._gi",
     # ── Third-party ──────────────────────────────────────────────────────────
     "mido", "mido.backends.rtmidi", "mido.backends.backend",
     "PyQt5.QtCore", "PyQt5.QtGui", "PyQt5.QtWidgets",
