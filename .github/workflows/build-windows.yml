@@ -163,6 +163,11 @@ jobs:
 
           $env:PKG_CONFIG_PATH = $pkgCfgPath
           $env:PKG_CONFIG      = $pkgCfgExe
+
+          # Also set at machine level so meson subprocesses inherit it
+          [System.Environment]::SetEnvironmentVariable("PKG_CONFIG_PATH", $pkgCfgPath, "Machine")
+          [System.Environment]::SetEnvironmentVariable("PKG_CONFIG",      $pkgCfgExe,  "Machine")
+
           # Export to GITHUB_ENV so subsequent steps inherit it
           echo "PKG_CONFIG_PATH=$pkgCfgPath" >> $env:GITHUB_ENV
           echo "PKG_CONFIG=$pkgCfgExe"       >> $env:GITHUB_ENV
@@ -170,8 +175,15 @@ jobs:
           # Verify girepository-2.0 is visible
           $giVer = & $pkgCfgExe --modversion girepository-2.0 2>&1
           Write-Host "girepository-2.0 version: $giVer"
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "girepository-2.0 NOT found by pkg-config! Listing available .pc files:"
+            Get-ChildItem $pkgCfgPath -Filter "*.pc" | ForEach-Object { Write-Host $_.Name }
+          }
 
           pip install meson ninja
+
+          # Pass PKG_CONFIG_PATH explicitly via env to pip (meson inherits it)
+          $env:MESON_ARGS = ""
           pip install PyGObject
 
           python -c "import gi; print('gi OK:', gi.__file__)"
